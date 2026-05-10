@@ -18,7 +18,6 @@ provider "aws" {
 # VPC & NETWORKING
 # ------------------------------------------------------------------
 
-# Your private fenced area in AWS
 resource "aws_vpc" "main" {
   cidr_block           = "10.0.0.0/16"
   enable_dns_hostnames = true
@@ -29,7 +28,6 @@ resource "aws_vpc" "main" {
   }
 }
 
-# Internet Gateway = the door to the internet for your public stuff
 resource "aws_internet_gateway" "igw" {
   vpc_id = aws_vpc.main.id
 
@@ -38,7 +36,6 @@ resource "aws_internet_gateway" "igw" {
   }
 }
 
-# Elastic IP for NAT Gateway (NAT needs a fixed public IP)
 resource "aws_eip" "nat" {
   domain = "vpc"
 }
@@ -47,19 +44,17 @@ resource "aws_eip" "nat" {
 # SUBNETS
 # ------------------------------------------------------------------
 
-# PUBLIC SUBNET 1 (us-east-1a) - for ALB and NAT Gateway
 resource "aws_subnet" "public_1" {
   vpc_id                  = aws_vpc.main.id
   cidr_block              = "10.0.101.0/24"
   availability_zone       = "${var.aws_region}a"
-  map_public_ip_on_launch = true   # Any computer here gets a public IP
+  map_public_ip_on_launch = true
 
   tags = {
     Name = "public-subnet-1a"
   }
 }
 
-# PUBLIC SUBNET 2 (us-east-1b) - for ALB (needs 2 AZs to work)
 resource "aws_subnet" "public_2" {
   vpc_id                  = aws_vpc.main.id
   cidr_block              = "10.0.102.0/24"
@@ -71,7 +66,6 @@ resource "aws_subnet" "public_2" {
   }
 }
 
-# PRIVATE SUBNET A (us-east-1a) - matches your PDF diagram
 resource "aws_subnet" "private_1" {
   vpc_id            = aws_vpc.main.id
   cidr_block        = "10.0.1.0/24"
@@ -82,7 +76,6 @@ resource "aws_subnet" "private_1" {
   }
 }
 
-# PRIVATE SUBNET B (us-east-1b) - matches your PDF diagram
 resource "aws_subnet" "private_2" {
   vpc_id            = aws_vpc.main.id
   cidr_block        = "10.0.2.0/24"
@@ -96,8 +89,6 @@ resource "aws_subnet" "private_2" {
 # ------------------------------------------------------------------
 # NAT GATEWAY
 # ------------------------------------------------------------------
-# Allows private servers to download Docker/images from the internet
-# but blocks strangers from coming in
 resource "aws_nat_gateway" "nat" {
   allocation_id = aws_eip.nat.id
   subnet_id     = aws_subnet.public_1.id
@@ -108,10 +99,9 @@ resource "aws_nat_gateway" "nat" {
 }
 
 # ------------------------------------------------------------------
-# ROUTE TABLES (The traffic signs of your network)
+# ROUTE TABLES
 # ------------------------------------------------------------------
 
-# Public Route Table: sends internet traffic through Internet Gateway
 resource "aws_route_table" "public" {
   vpc_id = aws_vpc.main.id
 
@@ -125,7 +115,6 @@ resource "aws_route_table" "public" {
   }
 }
 
-# Private Route Table: sends internet traffic through NAT Gateway
 resource "aws_route_table" "private" {
   vpc_id = aws_vpc.main.id
 
@@ -139,7 +128,6 @@ resource "aws_route_table" "private" {
   }
 }
 
-# Connect subnets to their route tables
 resource "aws_route_table_association" "public_1" {
   subnet_id      = aws_subnet.public_1.id
   route_table_id = aws_route_table.public.id
@@ -161,10 +149,9 @@ resource "aws_route_table_association" "private_2" {
 }
 
 # ------------------------------------------------------------------
-# SECURITY GROUPS (Firewalls)
+# SECURITY GROUPS
 # ------------------------------------------------------------------
 
-# ALB Security Group - allows visitors to reach the load balancer
 resource "aws_security_group" "alb" {
   name_prefix = "alb-sg-"
   vpc_id      = aws_vpc.main.id
@@ -197,12 +184,10 @@ resource "aws_security_group" "alb" {
   }
 }
 
-# EC2 Security Group - allows traffic only from ALB + SSH for Ansible
 resource "aws_security_group" "ec2" {
   name_prefix = "ec2-sg-"
   vpc_id      = aws_vpc.main.id
 
-  # Port 80 - ONLY from the Load Balancer (very secure)
   ingress {
     description     = "HTTP from ALB only"
     from_port       = 80
@@ -211,8 +196,6 @@ resource "aws_security_group" "ec2" {
     security_groups = [aws_security_group.alb.id]
   }
 
-  # Port 22 - SSH access so GitHub Actions/Ansible can log in
-  # In production you would restrict this to your office IP
   ingress {
     description = "SSH from anywhere (needed for GitHub Actions)"
     from_port   = 22
@@ -221,7 +204,6 @@ resource "aws_security_group" "ec2" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # Allow all outbound traffic (to download Docker, updates, etc.)
   egress {
     from_port   = 0
     to_port     = 0
@@ -235,12 +217,12 @@ resource "aws_security_group" "ec2" {
 }
 
 # ------------------------------------------------------------------
-# APPLICATION LOAD BALANCER (The receptionist)
+# APPLICATION LOAD BALANCER
 # ------------------------------------------------------------------
 
 resource "aws_lb" "main" {
   name               = "ecommerce-alb"
-  internal           = false          # Public-facing
+  internal           = false
   load_balancer_type = "application"
   security_groups    = [aws_security_group.alb.id]
   subnets            = [aws_subnet.public_1.id, aws_subnet.public_2.id]
@@ -250,7 +232,6 @@ resource "aws_lb" "main" {
   }
 }
 
-# Target Group = the group of servers that receive traffic
 resource "aws_lb_target_group" "web" {
   name     = "tg-webapps"
   port     = 80
@@ -270,7 +251,6 @@ resource "aws_lb_target_group" "web" {
   }
 }
 
-# Listener = "if someone visits port 80, send them to the target group"
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.main.arn
   port              = "80"
@@ -283,42 +263,24 @@ resource "aws_lb_listener" "http" {
 }
 
 # ------------------------------------------------------------------
-# SSH KEY PAIR
+# EC2 INSTANCES
 # ------------------------------------------------------------------
-# This reads your public key file and uploads it to AWS
-# so you can SSH into servers using your private key
-resource "aws_key_pair" "deployer" {
-  key_name   = var.key_name
-  public_key = file(var.public_key_path)
+
+# NOTE: We hardcode the AMI ID because AWS Learner Labs block
+# the ec2:DescribeImages API call needed by data "aws_ami".
+# This is Amazon Linux 2 in us-east-1. If you change regions,
+# replace this with the correct AMI ID for that region.
+locals {
+  ami_id = "ami-0c02fb55956c7d316"
 }
 
-# ------------------------------------------------------------------
-# EC2 INSTANCES (The actual servers running your app)
-# ------------------------------------------------------------------
-
-# Automatically find the latest Amazon Linux 2 image
-data "aws_ami" "amazon_linux_2" {
-  most_recent = true
-  owners      = ["amazon"]
-
-  filter {
-    name   = "name"
-    values = ["amzn2-ami-hvm-*-x86_64-gp2"]
-  }
-}
-
-# Create 2 web servers
 resource "aws_instance" "web" {
   count                  = 2
-  ami                    = data.aws_ami.amazon_linux_2.id
-  instance_type          = "t3.micro"              # Free tier eligible
-  key_name               = aws_key_pair.deployer.key_name
+  ami                    = local.ami_id
+  instance_type          = "t3.micro"
+  key_name               = var.key_name
   vpc_security_group_ids = [aws_security_group.ec2.id]
-
-  # NOTE: For this student lab, we place instances in PUBLIC subnets
-  # so GitHub Actions can SSH directly. In a real job, you'd use
-  # private subnets + a bastion host (jump server).
-  subnet_id                   = count.index == 0 ? aws_subnet.public_1.id : aws_subnet.public_2.id
+  subnet_id              = count.index == 0 ? aws_subnet.public_1.id : aws_subnet.public_2.id
   associate_public_ip_address = true
 
   tags = {
@@ -326,7 +288,6 @@ resource "aws_instance" "web" {
   }
 }
 
-# Connect each server to the Load Balancer
 resource "aws_lb_target_group_attachment" "web" {
   count            = length(aws_instance.web)
   target_group_arn = aws_lb_target_group.web.arn
@@ -335,15 +296,13 @@ resource "aws_lb_target_group_attachment" "web" {
 }
 
 # ------------------------------------------------------------------
-# CLOUDWATCH ALARM (The CPU alarm from your diagram)
+# CLOUDWATCH ALARM
 # ------------------------------------------------------------------
 
-# SNS Topic = where alarm messages go (email notifications)
 resource "aws_sns_topic" "alerts" {
   name = "cpu-alerts"
 }
 
-# Alarm for each EC2 instance
 resource "aws_cloudwatch_metric_alarm" "cpu_high" {
   count               = length(aws_instance.web)
   alarm_name          = "cpu-high-web-${count.index + 1}"
@@ -351,9 +310,9 @@ resource "aws_cloudwatch_metric_alarm" "cpu_high" {
   evaluation_periods  = "2"
   metric_name         = "CPUUtilization"
   namespace           = "AWS/EC2"
-  period              = "120"      # Check every 2 minutes
+  period              = "120"
   statistic           = "Average"
-  threshold           = "75"       # Fire if CPU > 75%
+  threshold           = "75"
   alarm_description   = "Alarm when CPU exceeds 75% for 2 consecutive periods"
   alarm_actions       = [aws_sns_topic.alerts.arn]
 
@@ -363,7 +322,7 @@ resource "aws_cloudwatch_metric_alarm" "cpu_high" {
 }
 
 # ------------------------------------------------------------------
-# OUTPUTS (These values are used by Ansible later!)
+# OUTPUTS
 # ------------------------------------------------------------------
 
 output "instance_public_ips" {

@@ -5,13 +5,7 @@ variable "aws_region" {
 }
 
 variable "key_name" {
-  description = "Name for your SSH key in AWS"
+  description = "Name of the EXISTING SSH key pair in AWS (must already be created in the console)"
   type        = string
-  default     = "ecommerce-key"
-}
-
-variable "public_key_path" {
-  description = "Path to your PUBLIC key file on your WSL computer"
-  type        = string
-  default     = "~/.ssh/devops-key.pub"
+  default     = "devops-key"
 }
