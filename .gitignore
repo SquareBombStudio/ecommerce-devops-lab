@@ -1,0 +1,30 @@
+﻿# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+*.tfvars
+override.tf
+override.tf.json
+.terraform.lock.hcl
+
+# Ansible
+*.retry
+inventory.ini          # We generate this dynamically in CI/CD
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Node / App
+node_modules/
+npm-debug.log
+
+# SSH Keys (NEVER push these!)
+*.pem
+*.key

@@ -1,0 +1,131 @@
+---
+- name: Deploy E-Commerce App on AWS EC2
+  hosts: web
+  become: yes          # Run as root (sudo)
+  gather_facts: yes
+
+  tasks:
+    # ================================================================
+    # 1. UPDATE SYSTEM
+    # ================================================================
+    - name: Update all packages
+      yum:
+        name: '*'
+        state: latest
+        update_only: yes
+      tags: [always]
+
+    # ================================================================
+    # 2. INSTALL DOCKER
+    # ================================================================
+    - name: Install Docker using amazon-linux-extras
+      shell: |
+        amazon-linux-extras install docker -y
+      args:
+        creates: /usr/bin/docker
+      tags: [docker]
+
+    - name: Start and enable Docker service
+      systemd:
+        name: docker
+        state: started
+        enabled: yes
+      tags: [docker]
+
+    - name: Add ec2-user to docker group
+      user:
+        name: ec2-user
+        groups: docker
+        append: yes
+      tags: [docker]
+
+    # ================================================================
+    # 3. INSTALL DOCKER COMPOSE
+    # ================================================================
+    - name: Download Docker Compose
+      get_url:
+        url: "https://github.com/docker/compose/releases/download/v2.24.6/docker-compose-linux-x86_64"
+        dest: /usr/local/bin/docker-compose
+        mode: '0755'
+      tags: [docker]
+
+    # ================================================================
+    # 4. CREATE APP DIRECTORY
+    # ================================================================
+    - name: Create app directory
+      file:
+        path: /home/ec2-user/ecommerce-app
+        state: directory
+        owner: ec2-user
+        group: ec2-user
+        mode: '0755'
+      tags: [app]
+
+    # ================================================================
+    # 5. COPY APP FILES TO SERVERS
+    # ================================================================
+    # NOTE: These paths work when running from repo root:
+    # ansible-playbook -i ansible/inventory.ini ansible/deploy.yml
+    - name: Copy docker-compose.yml
+      copy:
+        src: app/docker-compose.yml
+        dest: /home/ec2-user/ecommerce-app/docker-compose.yml
+        owner: ec2-user
+        group: ec2-user
+      tags: [app]
+
+    - name: Copy Dockerfile
+      copy:
+        src: app/Dockerfile
+        dest: /home/ec2-user/ecommerce-app/Dockerfile
+        owner: ec2-user
+        group: ec2-user
+      tags: [app]
+
+    - name: Copy package.json
+      copy:
+        src: app/package.json
+        dest: /home/ec2-user/ecommerce-app/package.json
+        owner: ec2-user
+        group: ec2-user
+      tags: [app]
+
+    - name: Copy server.js
+      copy:
+        src: app/server.js
+        dest: /home/ec2-user/ecommerce-app/server.js
+        owner: ec2-user
+        group: ec2-user
+      tags: [app]
+
+    - name: Copy nginx.conf
+      copy:
+        src: app/nginx.conf
+        dest: /home/ec2-user/ecommerce-app/nginx.conf
+        owner: ec2-user
+        group: ec2-user
+      tags: [app]
+
+    # ================================================================
+    # 6. START THE APP WITH DOCKER COMPOSE
+    # ================================================================
+    - name: Run Docker Compose
+      shell: |
+        cd /home/ec2-user/ecommerce-app
+        /usr/local/bin/docker-compose down 2>/dev/null || true
+        /usr/local/bin/docker-compose up -d --build
+      become: yes
+      tags: [app]
+
+    # ================================================================
+    # 7. VERIFY EVERYTHING IS RUNNING
+    # ================================================================
+    - name: Check running containers
+      command: docker ps
+      register: docker_ps
+      tags: [verify]
+
+    - name: Show running containers
+      debug:
+        msg: "{{ docker_ps.stdout_lines }}"
+      tags: [verify]
