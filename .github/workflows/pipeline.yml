@@ -2,8 +2,8 @@ name: Full DevOps Pipeline
 
 on:
   push:
-    branches: ["main"]
-  workflow_dispatch:   # Allows manual trigger (including Destroy job)
+    branches: [main]
+  workflow_dispatch:
 
 jobs:
   # ================================================================
@@ -12,6 +12,7 @@ jobs:
   terraform:
     name: Provision Infrastructure
     runs-on: ubuntu-latest
+    if: github.event_name == 'push'
     defaults:
       run:
         working-directory: terraform
@@ -48,11 +49,10 @@ jobs:
       - name: Export Instance IPs
         id: export
         run: |
-          IPS=$(terraform output -json instance_public_ips | jq -r '.[]' | tr '
-' ',')
+          IPS=$(terraform output -json instance_public_ips | jq -r '.[]' | tr '\n' ',')
           DNS=$(terraform output -raw alb_dns_name)
-          echo "instance_ips=$IPS" >> $GITHUB_OUTPUT
-          echo "alb_dns=$DNS" >> $GITHUB_OUTPUT
+          echo "instance_ips=$IPS" >> "$GITHUB_OUTPUT"
+          echo "alb_dns=$DNS" >> "$GITHUB_OUTPUT"
 
   # ================================================================
   # JOB 2: ANSIBLE - Configure Servers & Deploy App
@@ -60,16 +60,17 @@ jobs:
   ansible:
     name: Configure Servers
     runs-on: ubuntu-latest
-    needs: terraform       # Wait for Terraform to finish
+    if: github.event_name == 'push'
+    needs: terraform
 
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Install Ansible & jq
+      - name: Install Ansible and jq
         run: |
-          sudo apt update
-          sudo apt install -y ansible jq
+          sudo apt-get update
+          sudo apt-get install -y ansible jq
 
       - name: Setup SSH Key
         run: |
@@ -86,15 +87,14 @@ jobs:
           cat inventory.ini
 
       - name: Run Ansible Deployment
-        run: |
-          ansible-playbook -i inventory.ini ansible/deploy.yml
+        run: ansible-playbook -i inventory.ini ansible/deploy.yml
         env:
           ANSIBLE_HOST_KEY_CHECKING: "False"
 
       - name: Show Website URL
         run: |
           echo "============================================"
-          echo "🚀 Your website is live at:"
+          echo "Your website is live at:"
           echo "http://${{ needs.terraform.outputs.alb_dns }}"
           echo "============================================"
 
