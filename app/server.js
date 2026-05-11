@@ -3,34 +3,95 @@ const mongoose = require('mongoose');
 const app = express();
 const PORT = 3000;
 
-// Connect to MongoDB (if available)
-const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/ecommerce';
+// MongoDB connection string
+const MONGO_URI = process.env.MONGO_URI || 'mongodb://mongo:27017/ecommerce';
 let dbStatus = 'Connecting...';
 
-mongoose.connect(MONGO_URI)
-  .then(() => { dbStatus = 'Connected'; console.log('MongoDB connected'); })
-  .catch(err => { dbStatus = 'Offline (using fallback)'; console.log('MongoDB not ready, using fallback data'); });
+// ================================================================
+// MONGOOSE SCHEMA
+// ================================================================
+const productSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  price: { type: Number, required: true },
+  image: { type: String, required: true }
+}, { collection: 'products' });
 
-// Sample product data (fallback if DB is down)
-const products = [
+const Product = mongoose.model('Product', productSchema);
+
+// ================================================================
+// FALLBACK DATA (used if MongoDB is not available)
+// ================================================================
+const fallbackProducts = [
   { name: 'Laptop', price: 1200, image: '💻' },
   { name: 'Phone', price: 800, image: '📱' },
   { name: 'Headphones', price: 150, image: '🎧' },
   { name: 'Tablet', price: 450, image: '📲' }
 ];
 
-// Health check endpoint (used by ALB)
+// ================================================================
+// CONNECT TO MONGODB + SEED DATA
+// ================================================================
+async function connectDB() {
+  try {
+    await mongoose.connect(MONGO_URI, {
+      serverSelectionTimeoutMS: 5000,
+      connectTimeoutMS: 5000
+    });
+    dbStatus = 'Connected';
+    console.log('✅ MongoDB connected successfully');
+
+    // Seed products if collection is empty
+    const count = await Product.countDocuments();
+    if (count === 0) {
+      await Product.insertMany(fallbackProducts);
+      console.log('🌱 Products seeded to MongoDB');
+    } else {
+      console.log(`📦 Found ${count} products in MongoDB`);
+    }
+  } catch (err) {
+    dbStatus = 'Offline (using fallback)';
+    console.log('⚠️ MongoDB not ready:', err.message);
+    console.log('📦 Using fallback product data');
+  }
+}
+
+connectDB();
+
+// ================================================================
+// ROUTES
+// ================================================================
+
+// Health check (used by ALB)
 app.get('/health', (req, res) => {
   res.status(200).send('OK');
 });
 
-// API endpoint for products
-app.get('/api/products', (req, res) => {
-  res.json(products);
+// API: Get all products from MongoDB
+app.get('/api/products', async (req, res) => {
+  try {
+    if (dbStatus === 'Connected') {
+      const products = await Product.find().lean();
+      return res.json(products);
+    }
+    throw new Error('Database not connected');
+  } catch (err) {
+    res.json(fallbackProducts);
+  }
 });
 
-// Main page - E-Commerce Store
-app.get('/', (req, res) => {
+// Home page — E-Commerce Store
+app.get('/', async (req, res) => {
+  let products = fallbackProducts;
+
+  // Try to get real data from MongoDB
+  try {
+    if (dbStatus === 'Connected') {
+      products = await Product.find().lean();
+    }
+  } catch (err) {
+    console.log('Using fallback data for homepage');
+  }
+
   const productCards = products.map(p => `
     <div style="border:1px solid #ddd; border-radius:8px; padding:20px; margin:10px; width:200px; text-align:center; display:inline-block; background:#fff;">
       <div style="font-size:48px; margin-bottom:10px;">${p.image}</div>
@@ -56,7 +117,7 @@ app.get('/', (req, res) => {
     <body>
       <div class="header">
         <h1>🛒 E-Commerce Store</h1>
-        <p>DevOps CI/CD Lab - Powered by Terraform + Ansible + Docker</p>
+        <p>DevOps CI/CD Lab — Powered by Terraform + Ansible + Docker + MongoDB</p>
       </div>
       <div class="container">
         <div class="status">🟢 Server: Online | 🗄️ Database: ${dbStatus}</div>
@@ -69,5 +130,5 @@ app.get('/', (req, res) => {
 });
 
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`E-commerce app running on port ${PORT}`);
+  console.log(`🚀 E-commerce app running on port ${PORT}`);
 });

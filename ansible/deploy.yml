@@ -1,7 +1,7 @@
 ---
 - name: Deploy E-Commerce App on AWS EC2
   hosts: web
-  become: yes          # Run as root (sudo)
+  become: yes
   gather_facts: yes
 
   tasks:
@@ -18,14 +18,13 @@
     # ================================================================
     # 2. INSTALL DOCKER
     # ================================================================
-    - name: Install Docker using amazon-linux-extras
-      shell: |
-        amazon-linux-extras install docker -y
+    - name: Install Docker
+      shell: amazon-linux-extras install docker -y
       args:
         creates: /usr/bin/docker
       tags: [docker]
 
-    - name: Start and enable Docker service
+    - name: Start and enable Docker
       systemd:
         name: docker
         state: started
@@ -62,10 +61,8 @@
       tags: [app]
 
     # ================================================================
-    # 5. COPY APP FILES TO SERVERS
+    # 5. COPY APP FILES
     # ================================================================
-    # NOTE: These paths work when running from repo root:
-    # ansible-playbook -i ansible/inventory.ini ansible/deploy.yml
     - name: Copy docker-compose.yml
       copy:
         src: app/docker-compose.yml
@@ -107,7 +104,7 @@
       tags: [app]
 
     # ================================================================
-    # 6. START THE APP WITH DOCKER COMPOSE
+    # 6. START THE APP
     # ================================================================
     - name: Run Docker Compose
       shell: |
@@ -118,14 +115,14 @@
       tags: [app]
 
     # ================================================================
-    # 7. VERIFY EVERYTHING IS RUNNING
+    # 7. VERIFY
     # ================================================================
     - name: Check running containers
       command: docker ps
       register: docker_ps
       tags: [verify]
 
-    - name: Show running containers
+    - name: Show containers
       debug:
         msg: "{{ docker_ps.stdout_lines }}"
       tags: [verify]
