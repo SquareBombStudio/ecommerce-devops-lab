@@ -46,12 +46,19 @@ jobs:
       - name: Terraform Apply
         run: terraform apply -auto-approve tfplan
 
-      - name: Export Instance IPs
+      - name: Export Outputs
         id: export
         run: |
-          IPS=$(terraform output -json instance_public_ips | jq -r '.[]' | tr '\n' ',')
-          DNS=$(terraform output -raw alb_dns_name)
+          echo "=== Terraform Outputs ==="
+          terraform output
+          echo "========================"
+
+          IPS=$(terraform output -json instance_public_ips | jq -r '.[]' | paste -sd ',' -)
+          echo "IPs: $IPS"
           echo "instance_ips=$IPS" >> "$GITHUB_OUTPUT"
+
+          DNS=$(terraform output -raw alb_dns_name)
+          echo "DNS: $DNS"
           echo "alb_dns=$DNS" >> "$GITHUB_OUTPUT"
 
   # ================================================================
@@ -98,7 +105,7 @@ jobs:
       - name: Show Website URL
         run: |
           echo "============================================"
-          echo "Your website is live at:"
+          echo "🚀 Your website is live at:"
           echo "http://${{ needs.terraform.outputs.alb_dns }}"
           echo "============================================"
 
