@@ -62,10 +62,11 @@
 
     # ================================================================
     # 5. COPY APP FILES
+    # NOTE: playbook is in ansible/, app files are in ../app/
     # ================================================================
     - name: Copy docker-compose.yml
       copy:
-        src: app/docker-compose.yml
+        src: ../app/docker-compose.yml
         dest: /home/ec2-user/ecommerce-app/docker-compose.yml
         owner: ec2-user
         group: ec2-user
@@ -73,7 +74,7 @@
 
     - name: Copy Dockerfile
       copy:
-        src: app/Dockerfile
+        src: ../app/Dockerfile
         dest: /home/ec2-user/ecommerce-app/Dockerfile
         owner: ec2-user
         group: ec2-user
@@ -81,7 +82,7 @@
 
     - name: Copy package.json
       copy:
-        src: app/package.json
+        src: ../app/package.json
         dest: /home/ec2-user/ecommerce-app/package.json
         owner: ec2-user
         group: ec2-user
@@ -89,7 +90,7 @@
 
     - name: Copy server.js
       copy:
-        src: app/server.js
+        src: ../app/server.js
         dest: /home/ec2-user/ecommerce-app/server.js
         owner: ec2-user
         group: ec2-user
@@ -97,7 +98,7 @@
 
     - name: Copy nginx.conf
       copy:
-        src: app/nginx.conf
+        src: ../app/nginx.conf
         dest: /home/ec2-user/ecommerce-app/nginx.conf
         owner: ec2-user
         group: ec2-user
